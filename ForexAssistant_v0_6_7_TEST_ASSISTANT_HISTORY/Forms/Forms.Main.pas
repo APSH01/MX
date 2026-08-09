@@ -1,0 +1,1044 @@
+﻿unit Forms.Main;
+interface
+uses
+  Winapi.Windows,
+  Winapi.Messages,
+  System.SysUtils,
+  System.Classes,
+  System.DateUtils,
+  System.Math,
+  System.Variants,
+  System.StrUtils,
+  System.UITypes,
+  Vcl.Graphics,
+  Vcl.Controls,
+  Vcl.Forms,
+  Vcl.Dialogs,
+  Vcl.StdCtrls,
+  Vcl.ExtCtrls,
+  Vcl.Buttons,
+  Vcl.ComCtrls,
+  cxGraphics,
+  cxControls,
+  cxContainer,
+  cxEdit,
+  cxLabel,
+  cxMemo,
+  cxSplitter,
+  cxGroupBox,
+  cxGrid,
+  cxGridLevel,
+  cxGridCustomView,
+  cxGridCustomTableView,
+  cxGridTableView,
+  Core.Market.Types,
+  Core.Market.Provider,
+  Core.Market.Context,
+  Core.Market.Assistant,
+  Core.Trading.Behaviour,
+  Core.Trading.Basket,
+  Core.Trading.Timeline,
+  Core.Broker.Types,
+  Charts.MarketChart,
+  Database.Forex,
+  Providers.MT5Bridge, cxLookAndFeels, cxLookAndFeelPainters, cxStyles,
+  cxCustomData, cxFilter, cxData, cxDataStorage, cxNavigator, dxDateRanges,
+  dxScrollbarAnnotations, cxClasses, cxTextEdit;
+type
+  TfrmMain = class(TForm)
+    pnlTop: TPanel;
+    lblBroker: TLabel;
+    cbBroker: TComboBox;
+    lblSymbol: TLabel;
+    cbSymbol: TComboBox;
+    lblTimeFrame: TLabel;
+    cbTimeFrame: TComboBox;
+    sbConnect: TSpeedButton;
+    sbRefresh: TSpeedButton;
+    sbInstallBridge: TSpeedButton;
+    sbMonitor: TSpeedButton;
+    chkFibonacci: TCheckBox;
+    pnlBottom: TPanel;
+    lblStatus: TLabel;
+    lblDatabase: TLabel;
+    StatusBar: TStatusBar;
+    tmLive: TTimer;
+    tmSessions: TTimer;
+    gbMonitor: TcxGroupBox;
+    memMonitor: TcxMemo;
+    splMonitor: TcxSplitter;
+    pnlRight: TPanel;
+    gbContext: TcxGroupBox;
+    memContext: TcxMemo;
+    gbPositions: TcxGroupBox;
+    lblBuyCaption: TcxLabel;
+    lblBuyValue: TcxLabel;
+    lblSellCaption: TcxLabel;
+    lblSellValue: TcxLabel;
+    lblTotalCaption: TcxLabel;
+    lblTotalValue: TcxLabel;
+    gbBehaviour: TcxGroupBox;
+    memBehaviour: TcxMemo;
+    gbSessions: TcxGroupBox;
+    grdSessions: TcxGrid;
+    tvSessions: TcxGridTableView;
+    colSessionIndicator: TcxGridColumn;
+    colSessionMarket: TcxGridColumn;
+    colSessionTime: TcxGridColumn;
+    colSessionState: TcxGridColumn;
+    colSessionChange: TcxGridColumn;
+    lvSessions: TcxGridLevel;
+    splRight: TcxSplitter;
+    pnlAssistant: TPanel;
+    gbAssistant: TcxGroupBox;
+    lblAssistantSuggestion: TcxLabel;
+    lblAssistantBuy: TcxLabel;
+    lblAssistantSell: TcxLabel;
+    lblAssistantConfidence: TcxLabel;
+    lblAssistantQuality: TcxLabel;
+    memAssistantFor: TcxMemo;
+    memAssistantAgainst: TcxMemo;
+    lblAssistantComponents: TcxLabel;
+    gbTimeline: TcxGroupBox;
+    memTimeline: TcxMemo;
+    gbAssistantHistory: TcxGroupBox;
+    memAssistantHistory: TcxMemo;
+    splAssistant: TcxSplitter;
+    pnlChartHost: TPanel;
+    lblBasketDetails: TcxLabel;
+    procedure FormCreate(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
+    procedure sbConnectClick(Sender: TObject);
+    procedure sbRefreshClick(Sender: TObject);
+    procedure sbInstallBridgeClick(Sender: TObject);
+    procedure sbMonitorClick(Sender: TObject);
+    procedure cbBrokerChange(Sender: TObject);
+    procedure cbSelectionChange(Sender: TObject);
+    procedure chkFibonacciClick(Sender: TObject);
+    procedure tmLiveTimer(Sender: TObject);
+    procedure tmSessionsTimer(Sender: TObject);
+    procedure tvSessionsCustomDrawCell(Sender: TcxCustomGridTableView;
+      ACanvas: TcxCanvas; AViewInfo: TcxGridTableDataCellViewInfo;
+      var ADone: Boolean);
+  private
+    FProvider: IMarketDataProvider;
+    FMT5Provider: TMT5BridgeProvider;
+    FChart: TMarketChart;
+    FLoading: Boolean;
+    FLastReadyState: Boolean;
+    FSymbolsLoaded: Boolean;
+    FDatabase: TForexDatabase;
+    FBrokers: TBrokerConfigArray;
+    FActiveBrokerIndex: Integer;
+    FContextLastUpdate: TDateTime;
+    FContextUpdating: Boolean;
+    FBehaviourLastUpdate: TDateTime;
+    FBehaviourUpdating: Boolean;
+    FLastContext: TMarketContextResult;
+    FHasContext: Boolean;
+    FLastBehaviour: TTradingBehaviourResult;
+    procedure BuildChart;
+    procedure ShowMT5SocketHintOnce;
+    procedure FlushDiagnostics;
+    procedure UpdateMarketContext;
+    procedure UpdateMarketAssistant(const AContext: TMarketContextResult);
+    function FilterEntriesBySymbol(const AEntries: TTradeEntryList;
+      const ASymbol: string): TTradeEntryList;
+    procedure UpdateTradingBehaviour;
+    procedure LoadWindowLayout;
+    procedure SaveWindowLayout;
+    procedure SetMonitorVisible(const AVisible: Boolean);
+    procedure UpdatePositionSummary(const APositions: TOpenPositionList);
+    procedure FillSelectors;
+    procedure RefreshSymbolsFromMT5;
+    procedure FillBrokers;
+    procedure ActivateSelectedBroker(const AStartListener: Boolean);
+    procedure LoadCurrentData;
+    procedure LoadCurrentPositions;
+    procedure UpdateConnectionState;
+    procedure UpdateMarketSessions;
+    procedure SelectComboText(ACombo: TComboBox; const AText: string;
+      const ADefaultIndex: Integer);
+  end;
+var
+  frmMain: TfrmMain;
+implementation
+uses
+  Forms.BridgeInstaller,
+  Utils.Settings,
+  Utils.Logger,
+  Utils.MarketSessions;
+{$R *.dfm}
+procedure TfrmMain.FormCreate(Sender: TObject);
+begin
+  TAppLogger.Write('Application started');
+  FDatabase := TForexDatabase.Create;
+  try
+    FDatabase.Initialize;
+    lblDatabase.Caption := 'Baza: SQLite OK';
+    lblDatabase.Font.Color := clGreen;
+  except
+    on E: Exception do
+    begin
+      lblDatabase.Caption := 'Baza: BŁĄD';
+      lblDatabase.Font.Color := clMaroon;
+      TAppLogger.WriteFmt('SQLite initialization error: %s', [E.Message]);
+      MessageDlg('Nie udało się uruchomić SQLite:' + sLineBreak + E.Message +
+        sLineBreak + sLineBreak +
+        'Dla Win64 sprawdź obecność 64-bitowego sqlite3.dll obok EXE.',
+        mtError, [mbOK], 0);
+    end;
+  end;
+  FActiveBrokerIndex := -1;
+  FillBrokers;
+  FillSelectors;
+  ActivateSelectedBroker(False);
+  BuildChart;
+  FLastReadyState := False;
+  FSymbolsLoaded := False;
+  lblBuyCaption.Caption := 'BUY  0.00';
+  lblSellCaption.Caption := 'SELL 0.00';
+  lblBuyValue.Caption := '0.00';
+  lblSellValue.Caption := '0.00';
+  lblTotalValue.Caption := '0.00';
+  lblBasketDetails.Caption := 'Brak otwartych pozycji';
+  memBehaviour.Lines.Text :=
+    'Monitor obserwuje tempo nowych wejść.' + sLineBreak +
+    'Nie ocenia emocji i nie blokuje decyzji.';
+  FBehaviourLastUpdate := 0;
+  FHasContext := False;
+  LoadWindowLayout;
+  UpdateConnectionState;
+  UpdateMarketSessions;
+  ShowMT5SocketHintOnce;
+end;
+procedure TfrmMain.FormDestroy(Sender: TObject);
+begin
+  tmLive.Enabled := False;
+  TAppSettings.SaveMarketSelection(cbSymbol.Text, cbTimeFrame.Text);
+  SaveWindowLayout;
+  if Assigned(FProvider) then
+    FProvider.Disconnect;
+  FProvider := nil;
+  FMT5Provider := nil;
+  FreeAndNil(FDatabase);
+  TAppLogger.Write('Application stopped');
+end;
+procedure TfrmMain.SelectComboText(ACombo: TComboBox; const AText: string;
+  const ADefaultIndex: Integer);
+var
+  I: Integer;
+begin
+  I := ACombo.Items.IndexOf(AText);
+  if I >= 0 then
+    ACombo.ItemIndex := I
+  else
+  begin
+    ACombo.Text := AText;
+    if (ACombo.Text = '') and (ADefaultIndex >= 0) and
+       (ADefaultIndex < ACombo.Items.Count) then
+      ACombo.ItemIndex := ADefaultIndex;
+  end;
+end;
+procedure TfrmMain.FillBrokers;
+var
+  I, Selected: Integer;
+  LastBroker: string;
+begin
+  if not Assigned(FDatabase) or not FDatabase.Connection.Connected then Exit;
+  FBrokers := FDatabase.LoadBrokers;
+  cbBroker.Items.BeginUpdate;
+  try
+    cbBroker.Items.Clear;
+    for I := 0 to High(FBrokers) do
+      cbBroker.Items.Add(Format('%s  [%s:%d]',
+        [FBrokers[I].Name, FBrokers[I].Host, FBrokers[I].Port]));
+  finally
+    cbBroker.Items.EndUpdate;
+  end;
+  LastBroker := FDatabase.GetSetting('last_broker', 'XM');
+  Selected := 0;
+  for I := 0 to High(FBrokers) do
+    if SameText(FBrokers[I].Name, LastBroker) then
+    begin
+      Selected := I;
+      Break;
+    end;
+  if cbBroker.Items.Count > 0 then
+  begin
+    FLoading := True;
+    try
+      cbBroker.ItemIndex := Selected;
+    finally
+      FLoading := False;
+    end;
+  end;
+end;
+procedure TfrmMain.ActivateSelectedBroker(const AStartListener: Boolean);
+var
+  B: TBrokerConfig;
+begin
+  if (cbBroker.ItemIndex < 0) or (cbBroker.ItemIndex > High(FBrokers)) then Exit;
+  tmLive.Enabled := False;
+  if Assigned(FProvider) then FProvider.Disconnect;
+  FProvider := nil;
+  FMT5Provider := nil;
+  FActiveBrokerIndex := cbBroker.ItemIndex;
+  FSymbolsLoaded := False;
+  B := FBrokers[FActiveBrokerIndex];
+  FMT5Provider := TMT5BridgeProvider.Create(B.Host, B.Port);
+  FProvider := FMT5Provider;
+  if B.LastSymbol <> '' then cbSymbol.Text := B.LastSymbol;
+  if B.LastTimeFrame <> '' then SelectComboText(cbTimeFrame, B.LastTimeFrame, 2);
+  if Assigned(FDatabase) and FDatabase.Connection.Connected then
+    FDatabase.SetSetting('last_broker', B.Name);
+  if AStartListener then
+  begin
+    if not FProvider.Connect('', '', '') then
+      raise Exception.CreateFmt('Nie można uruchomić Bridge %s:%d.', [B.Host, B.Port]);
+    tmLive.Enabled := True;
+  end;
+  UpdateConnectionState;
+end;
+procedure TfrmMain.cbBrokerChange(Sender: TObject);
+begin
+  if FLoading then Exit;
+  try
+    ActivateSelectedBroker(True);
+  except
+    on E: Exception do
+      MessageDlg(E.Message, mtError, [mbOK], 0);
+  end;
+end;
+procedure TfrmMain.FillSelectors;
+begin
+  { Przed połączeniem zostawiamy bezpieczny symbol startowy.
+    Po HELLO lista zostanie zastąpiona symbolami z Market Watch w MT5. }
+  cbSymbol.Items.BeginUpdate;
+  try
+    cbSymbol.Items.Clear;
+    cbSymbol.Items.Add('GOLD#');
+  finally
+    cbSymbol.Items.EndUpdate;
+  end;
+  cbTimeFrame.Items.BeginUpdate;
+  try
+    cbTimeFrame.Items.Clear;
+    cbTimeFrame.Items.Add('M1');
+    cbTimeFrame.Items.Add('M5');
+    cbTimeFrame.Items.Add('M15');
+    cbTimeFrame.Items.Add('M30');
+    cbTimeFrame.Items.Add('H1');
+    cbTimeFrame.Items.Add('H4');
+    cbTimeFrame.Items.Add('D1');
+    cbTimeFrame.Items.Add('W1');
+    cbTimeFrame.Items.Add('MN1');
+  finally
+    cbTimeFrame.Items.EndUpdate;
+  end;
+  SelectComboText(cbSymbol, TAppSettings.LoadLastSymbol('GOLD#'), 0);
+  SelectComboText(cbTimeFrame, TAppSettings.LoadLastTimeFrame('M15'), 2);
+end;
+procedure TfrmMain.RefreshSymbolsFromMT5;
+var
+  Symbols: TStringList;
+  PreviousSymbol, SavedSymbol: string;
+  I, SelectedIndex: Integer;
+  function FindGoldSymbol: Integer;
+  var
+    J: Integer;
+    U: string;
+  begin
+    Result := -1;
+    Result := Symbols.IndexOf('GOLD#');
+    if Result >= 0 then Exit;
+    Result := Symbols.IndexOf('GOLD');
+    if Result >= 0 then Exit;
+    for J := 0 to Symbols.Count - 1 do
+    begin
+      U := UpperCase(Symbols[J]);
+      if (Pos('GOLD', U) > 0) or (Pos('XAUUSD', U) > 0) then
+        Exit(J);
+    end;
+  end;
+begin
+  if FSymbolsLoaded or not Assigned(FProvider) or
+     not FProvider.IsDataAvailable then
+    Exit;
+  PreviousSymbol := Trim(cbSymbol.Text);
+  SavedSymbol := TAppSettings.LoadLastSymbol(PreviousSymbol);
+  Symbols := FProvider.LoadSymbols;
+  try
+    if Symbols.Count = 0 then
+    begin
+      StatusBar.SimpleText := 'MT5 nie zwrócił symboli z Market Watch.';
+      Exit;
+    end;
+    SelectedIndex := Symbols.IndexOf(PreviousSymbol);
+    if SelectedIndex < 0 then
+      SelectedIndex := Symbols.IndexOf(SavedSymbol);
+    if SelectedIndex < 0 then
+      SelectedIndex := FindGoldSymbol;
+    if SelectedIndex < 0 then
+      SelectedIndex := 0;
+    FLoading := True;
+    try
+      cbSymbol.Items.BeginUpdate;
+      try
+        cbSymbol.Items.Assign(Symbols);
+        cbSymbol.ItemIndex := SelectedIndex;
+      finally
+        cbSymbol.Items.EndUpdate;
+      end;
+    finally
+      FLoading := False;
+    end;
+    FSymbolsLoaded := True;
+    TAppSettings.SaveMarketSelection(cbSymbol.Text, cbTimeFrame.Text);
+    if Assigned(memMonitor) then
+      memMonitor.Lines.Add(FormatDateTime('hh:nn:ss.zzz', Now) +
+        Format('  SYMBOLS loaded=%d selected=%s',
+          [Symbols.Count, cbSymbol.Text]));
+  finally
+    Symbols.Free;
+  end;
+end;
+procedure TfrmMain.FlushDiagnostics;
+var
+  Lines: TStringList;
+begin
+  if not Assigned(FMT5Provider) or not Assigned(memMonitor) then Exit;
+  Lines := TStringList.Create;
+  try
+    FMT5Provider.DrainDiagnostics(Lines);
+    if Lines.Count > 0 then
+    begin
+      memMonitor.Lines.BeginUpdate;
+      try
+        memMonitor.Lines.AddStrings(Lines);
+        while memMonitor.Lines.Count > 500 do
+          memMonitor.Lines.Delete(0);
+        memMonitor.SelStart := Length(memMonitor.Text);
+        memMonitor.Perform(EM_SCROLLCARET, 0, 0);
+      finally
+        memMonitor.Lines.EndUpdate;
+      end;
+    end;
+  finally
+    Lines.Free;
+  end;
+end;
+procedure TfrmMain.ShowMT5SocketHintOnce;
+begin
+  if not Assigned(FDatabase) or not FDatabase.Connection.Connected then
+    Exit;
+  if FDatabase.GetSetting('mt5_socket_hint_shown', '0') = '1' then
+    Exit;
+  MessageDlg(
+    'Konfiguracja MT5 Bridge:' + sLineBreak + sLineBreak +
+    'Tools -> Options -> Experts' + sLineBreak +
+    'dodaj do listy dozwolonych adresów:' + sLineBreak + sLineBreak +
+    '127.0.0.1:5555' + sLineBreak + sLineBreak +
+    'Port musi być zgodny z portem wybranego brokera w ForexAssistant.',
+    mtInformation, [mbOK], 0);
+  FDatabase.SetSetting('mt5_socket_hint_shown', '1');
+end;
+procedure TfrmMain.BuildChart;
+begin
+  FChart := TMarketChart.Create(Self);
+  FChart.Parent := pnlChartHost;
+  FChart.Align := alClient;
+  FChart.ShowFibonacci := chkFibonacci.Checked;
+end;
+procedure TfrmMain.sbConnectClick(Sender: TObject);
+begin
+  if not Assigned(FProvider) then
+  begin
+    MessageDlg('Brak skonfigurowanego brokera.', mtError, [mbOK], 0);
+    Exit;
+  end;
+  if FProvider.IsConnected then
+  begin
+    tmLive.Enabled := False;
+    FProvider.Disconnect;
+    FSymbolsLoaded := False;
+    TAppLogger.Write('MT5 Bridge listener stopped');
+    UpdateConnectionState;
+    Exit;
+  end;
+  if not FProvider.Connect('', '', '') then
+    MessageDlg('Nie udało się uruchomić serwera MT5 Bridge dla wybranego brokera.',
+      mtError, [mbOK], 0)
+  else
+  begin
+    TAppLogger.Write('MT5 Bridge listener started');
+    tmLive.Enabled := True;
+  end;
+  UpdateConnectionState;
+end;
+
+procedure TfrmMain.sbInstallBridgeClick(Sender: TObject);
+begin
+  TfrmBridgeInstaller.Execute(Self, FBrokers, cbBroker.ItemIndex);
+end;
+procedure TfrmMain.sbRefreshClick(Sender: TObject);
+begin
+  if not FProvider.IsDataAvailable then
+  begin
+    MessageDlg('MT5 Bridge nie jest jeszcze połączony.', mtInformation,
+      [mbOK], 0);
+    Exit;
+  end;
+  LoadCurrentData;
+end;
+procedure TfrmMain.cbSelectionChange(Sender: TObject);
+begin
+  TAppSettings.SaveMarketSelection(cbSymbol.Text, cbTimeFrame.Text);
+  FContextLastUpdate := 0;
+  if Assigned(FProvider) and FProvider.IsDataAvailable then
+    LoadCurrentData;
+end;
+procedure TfrmMain.chkFibonacciClick(Sender: TObject);
+begin
+  if Assigned(FChart) then
+    FChart.ShowFibonacci := chkFibonacci.Checked;
+end;
+procedure TfrmMain.LoadCurrentData;
+var
+  Candles: TCandleList;
+  TimeFrame: TMarketTimeFrame;
+begin
+  if FLoading or (Trim(cbSymbol.Text) = '') or
+     not FProvider.IsDataAvailable then
+    Exit;
+  FLoading := True;
+  try
+    TimeFrame := TextToTimeFrame(cbTimeFrame.Text);
+    if Assigned(memMonitor) then
+      memMonitor.Lines.Add(FormatDateTime('hh:nn:ss.zzz', Now) +
+        Format('  REQUEST CANDLES %s %s', [Trim(cbSymbol.Text), cbTimeFrame.Text]));
+    Candles := FProvider.LoadCandles(Trim(cbSymbol.Text), TimeFrame, 120);
+    try
+      if Candles.Count > 0 then
+      begin
+        FChart.SetData(Candles, Trim(cbSymbol.Text), cbTimeFrame.Text);
+        LoadCurrentPositions;
+        if (FContextLastUpdate = 0) or
+           (MinutesBetween(Now, FContextLastUpdate) >= 5) then
+          UpdateMarketContext;
+        if Assigned(FDatabase) and FDatabase.Connection.Connected then
+          FDatabase.SaveCandles(Trim(cbSymbol.Text), TimeFrame, Candles);
+        StatusBar.SimpleText := Format('%s | %s | %d świec z MT5 | %s',
+          [Trim(cbSymbol.Text), cbTimeFrame.Text, Candles.Count,
+           FormatDateTime('yyyy-mm-dd hh:nn:ss', Now)]);
+        if Assigned(FDatabase) and FDatabase.Connection.Connected then
+          StatusBar.SimpleText := StatusBar.SimpleText + ' | zapisano do SQLite';
+      end
+      else
+      begin
+        StatusBar.SimpleText := Format('MT5 zwrócił 0 świec dla %s %s',
+          [Trim(cbSymbol.Text), cbTimeFrame.Text]);
+        if Assigned(memMonitor) then
+          memMonitor.Lines.Add(FormatDateTime('hh:nn:ss.zzz', Now) +
+            '  ERROR zero candles - sprawdź dokładną nazwę symbolu w MT5');
+      end;
+    finally
+      Candles.Free;
+    end;
+  except
+    on E: Exception do
+    begin
+      StatusBar.SimpleText := E.Message;
+      TAppLogger.WriteFmt('LoadCandles error: %s', [E.Message]);
+      if Assigned(memMonitor) then
+        memMonitor.Lines.Add(FormatDateTime('hh:nn:ss.zzz', Now) + '  ERROR ' + E.Message);
+    end;
+  end;
+  FLoading := False;
+end;
+procedure TfrmMain.LoadCurrentPositions;
+var
+  Positions: TOpenPositionList;
+begin
+  if not Assigned(FProvider) or not FProvider.IsDataAvailable then
+    Exit;
+  Positions := FProvider.LoadOpenPositions;
+  try
+    FChart.SetPositions(Positions);
+    UpdatePositionSummary(Positions);
+  finally
+    Positions.Free;
+  end;
+end;
+procedure TfrmMain.UpdatePositionSummary(
+  const APositions: TOpenPositionList);
+var
+  P: TOpenPosition;
+  Analysis: TBasketAnalysis;
+  BuyProfit, SellProfit: Double;
+
+  procedure SetProfitLabel(ALabel: TcxLabel; const AValue: Double);
+  begin
+    ALabel.Caption := FormatFloat('+#,##0.00;-#,##0.00;0.00', AValue);
+    if AValue > 0 then
+      ALabel.Style.TextColor := clGreen
+    else if AValue < 0 then
+      ALabel.Style.TextColor := clRed
+    else
+      ALabel.Style.TextColor := clWindowText;
+  end;
+
+begin
+  Analysis := TBasketAnalyzer.Analyze(APositions);
+  BuyProfit := 0;
+  SellProfit := 0;
+
+  for P in APositions do
+    if P.Side = psBuy then
+      BuyProfit := BuyProfit + P.Profit
+    else
+      SellProfit := SellProfit + P.Profit;
+
+  lblBuyCaption.Caption :=
+    Format('BUY  %d / %.2f', [Analysis.BuyCount, Analysis.BuyVolume]);
+  lblSellCaption.Caption :=
+    Format('SELL %d / %.2f', [Analysis.SellCount, Analysis.SellVolume]);
+
+  SetProfitLabel(lblBuyValue, BuyProfit);
+  SetProfitLabel(lblSellValue, SellProfit);
+  SetProfitLabel(lblTotalValue, Analysis.TotalProfit);
+
+  lblBasketDetails.Caption := Analysis.SummaryText;
+
+  case Analysis.Risk of
+    brLow:
+      lblBasketDetails.Style.TextColor := clWindowText;
+    brMedium:
+      lblBasketDetails.Style.TextColor := clOlive;
+    brHigh:
+      lblBasketDetails.Style.TextColor := clMaroon;
+  else
+    lblBasketDetails.Style.TextColor := clGrayText;
+  end;
+end;
+
+procedure TfrmMain.SetMonitorVisible(const AVisible: Boolean);
+begin
+  gbMonitor.Visible := AVisible;
+  splMonitor.Visible := AVisible;
+  sbMonitor.Down := AVisible;
+end;
+
+procedure TfrmMain.sbMonitorClick(Sender: TObject);
+begin
+  SetMonitorVisible(not gbMonitor.Visible);
+end;
+
+procedure TfrmMain.LoadWindowLayout;
+var
+  L: TWindowLayoutSettings;
+  WorkArea: TRect;
+begin
+  TAppSettings.LoadWindowLayout(L);
+
+  gbMonitor.Width := EnsureRange(L.MonitorWidth, 180, 600);
+  pnlRight.Width := EnsureRange(L.RightPanelWidth, 380, 700);
+  pnlAssistant.Width := EnsureRange(L.AssistantPanelWidth, 320, 650);
+
+  SetMonitorVisible(False); { zgodnie z ustaleniem: startowo zwinięty }
+
+  if (L.Left >= 0) and (L.Top >= 0) then
+  begin
+    WorkArea := Screen.WorkAreaRect;
+    Width := EnsureRange(L.Width, 1200, WorkArea.Width);
+    Height := EnsureRange(L.Height, 760, WorkArea.Height);
+    Left := EnsureRange(L.Left, WorkArea.Left,
+      Max(WorkArea.Left, WorkArea.Right - Width));
+    Top := EnsureRange(L.Top, WorkArea.Top,
+      Max(WorkArea.Top, WorkArea.Bottom - Height));
+    Position := poDesigned;
+  end;
+
+  if L.Maximized then
+    WindowState := wsMaximized;
+end;
+
+procedure TfrmMain.SaveWindowLayout;
+var
+  L: TWindowLayoutSettings;
+  Placement: TWindowPlacement;
+begin
+  FillChar(L, SizeOf(L), 0);
+  Placement.length := SizeOf(Placement);
+  if GetWindowPlacement(Handle, @Placement) then
+  begin
+    L.Left := Placement.rcNormalPosition.Left;
+    L.Top := Placement.rcNormalPosition.Top;
+    L.Width := Placement.rcNormalPosition.Right -
+      Placement.rcNormalPosition.Left;
+    L.Height := Placement.rcNormalPosition.Bottom -
+      Placement.rcNormalPosition.Top;
+  end
+  else
+  begin
+    L.Left := Left;
+    L.Top := Top;
+    L.Width := Width;
+    L.Height := Height;
+  end;
+
+  L.Maximized := WindowState = wsMaximized;
+  L.MonitorWidth := gbMonitor.Width;
+  L.RightPanelWidth := pnlRight.Width;
+  L.AssistantPanelWidth := pnlAssistant.Width;
+  L.MonitorVisible := gbMonitor.Visible;
+  TAppSettings.SaveWindowLayout(L);
+end;
+
+procedure TfrmMain.UpdateConnectionState;
+var
+  BrokerText: string;
+begin
+  BrokerText := '';
+  if (FActiveBrokerIndex >= 0) and (FActiveBrokerIndex <= High(FBrokers)) then
+    BrokerText := Format('%s [%s:%d] - ',
+      [FBrokers[FActiveBrokerIndex].Name,
+       FBrokers[FActiveBrokerIndex].Host,
+       FBrokers[FActiveBrokerIndex].Port]);
+  if Assigned(FProvider) and FProvider.IsConnected then
+  begin
+    lblStatus.Caption := 'Status: ' + BrokerText + FProvider.StatusText;
+    if FProvider.IsDataAvailable then
+      lblStatus.Font.Color := clGreen
+    else
+      lblStatus.Font.Color := clOlive;
+    sbConnect.Caption := 'Zatrzymaj';
+    sbRefresh.Enabled := FProvider.IsDataAvailable;
+  end
+  else
+  begin
+    lblStatus.Caption := 'Status: ' + BrokerText + 'ROZŁĄCZONO';
+    lblStatus.Font.Color := clMaroon;
+    sbConnect.Caption := 'Połącz';
+    sbRefresh.Enabled := False;
+  end;
+end;
+procedure TfrmMain.UpdateMarketSessions;
+var
+  Sessions: TMarketSessionInfoArray;
+  I: Integer;
+  UtcNow: TDateTime;
+begin
+  UtcNow := TTimeZone.Local.ToUniversalTime(Now);
+  Sessions := TMarketSessionCalculator.GetSessions(UtcNow);
+  tvSessions.BeginUpdate;
+  try
+    tvSessions.DataController.RecordCount := Length(Sessions);
+    for I := 0 to High(Sessions) do
+    begin
+      tvSessions.DataController.Values[I, colSessionIndicator.Index] :=
+        Sessions[I].IndicatorText;
+      tvSessions.DataController.Values[I, colSessionMarket.Index] :=
+        Sessions[I].Name;
+      tvSessions.DataController.Values[I, colSessionTime.Index] :=
+        Sessions[I].LocalTimeText;
+      tvSessions.DataController.Values[I, colSessionState.Index] :=
+        Sessions[I].StateText;
+      tvSessions.DataController.Values[I, colSessionChange.Index] :=
+        Sessions[I].ChangeText;
+    end;
+  finally
+    tvSessions.EndUpdate;
+  end;
+end;
+procedure TfrmMain.tvSessionsCustomDrawCell(
+  Sender: TcxCustomGridTableView; ACanvas: TcxCanvas;
+  AViewInfo: TcxGridTableDataCellViewInfo; var ADone: Boolean);
+var
+  StateText: string;
+  DotRect: TRect;
+begin
+  if AViewInfo.Item <> colSessionIndicator then
+    Exit;
+  ACanvas.FillRect(AViewInfo.Bounds);
+  StateText := VarToStr(AViewInfo.GridRecord.Values[colSessionIndicator.Index]);
+  if SameText(StateText, 'OPEN') then
+    ACanvas.Brush.Color := clGreen
+  else if SameText(StateText, 'SOON') then
+    ACanvas.Brush.Color := clYellow
+  else
+    ACanvas.Brush.Color := clRed;
+  ACanvas.Pen.Color := clGray;
+  DotRect := AViewInfo.Bounds;
+  DotRect.Left := DotRect.Left + (DotRect.Width - 12) div 2;
+  DotRect.Top := DotRect.Top + (DotRect.Height - 12) div 2;
+  DotRect.Right := DotRect.Left + 12;
+  DotRect.Bottom := DotRect.Top + 12;
+  ACanvas.Canvas.Ellipse(DotRect);
+  ADone := True;
+end;
+procedure TfrmMain.UpdateMarketContext;
+var
+  M15Candles, H1Candles, H4Candles, D1Candles: TCandleList;
+  Ctx: TMarketContextResult;
+  C15, C1, C4, CD: TTimeFrameContext;
+begin
+  if FContextUpdating or not Assigned(FProvider) or
+     not FProvider.IsDataAvailable or not Assigned(memContext) then
+    Exit;
+  FContextUpdating := True;
+  M15Candles := nil;
+  H1Candles := nil;
+  H4Candles := nil;
+  D1Candles := nil;
+  try
+    memContext.Lines.Text := 'Analiza M15 / H1 / H4 / D1...';
+    Application.ProcessMessages;
+    M15Candles := FProvider.LoadCandles(Trim(cbSymbol.Text), mtfM15, 80);
+    H1Candles := FProvider.LoadCandles(Trim(cbSymbol.Text), mtfH1, 80);
+    H4Candles := FProvider.LoadCandles(Trim(cbSymbol.Text), mtfH4, 80);
+    D1Candles := FProvider.LoadCandles(Trim(cbSymbol.Text), mtfD1, 80);
+    C15 := TMarketContextAnalyzer.AnalyzeTimeFrame('M15', M15Candles);
+    C1 := TMarketContextAnalyzer.AnalyzeTimeFrame('H1', H1Candles);
+    C4 := TMarketContextAnalyzer.AnalyzeTimeFrame('H4', H4Candles);
+    CD := TMarketContextAnalyzer.AnalyzeTimeFrame('D1', D1Candles);
+    Ctx := TMarketContextAnalyzer.Combine(C15, C1, C4, CD);
+    FLastContext := Ctx;
+    FHasContext := True;
+    UpdateMarketAssistant(Ctx);
+    memContext.Lines.BeginUpdate;
+    try
+      memContext.Clear;
+      memContext.Lines.Add(Trim(cbSymbol.Text));
+      memContext.Lines.Add('');
+      memContext.Lines.Add('M15  ' + Ctx.M15.DirectionText);
+      memContext.Lines.Add('H1   ' + Ctx.H1.DirectionText);
+      memContext.Lines.Add('H4   ' + Ctx.H4.DirectionText);
+      memContext.Lines.Add('D1   ' + Ctx.D1.DirectionText);
+      memContext.Lines.Add('');
+      memContext.Lines.Add('Kierunek główny: ' + Ctx.MainDirectionText);
+      memContext.Lines.Add('Cena: ' + Ctx.PriceLocationText);
+      memContext.Lines.Add('Zmienność: ' + Ctx.VolatilityText);
+      memContext.Lines.Add(Format('Wsparcie H1: %.5f', [Ctx.Support]));
+      memContext.Lines.Add(Format('Opór H1: %.5f', [Ctx.Resistance]));
+      memContext.Lines.Add('');
+      memContext.Lines.Add(Ctx.DecisionText);
+      memContext.Lines.Add('');
+      memContext.Lines.Add('Opis pomocniczy — decyzja należy do użytkownika.');
+    finally
+      memContext.Lines.EndUpdate;
+    end;
+    FContextLastUpdate := Now;
+  except
+    on E: Exception do
+    begin
+      memContext.Lines.Text := 'Nie udało się obliczyć kontekstu:' +
+        sLineBreak + E.Message;
+      TAppLogger.WriteFmt('Market context error: %s', [E.Message]);
+    end;
+  end;
+  M15Candles.Free;
+  H1Candles.Free;
+  H4Candles.Free;
+  D1Candles.Free;
+  FContextUpdating := False;
+end;
+procedure TfrmMain.UpdateMarketAssistant(
+  const AContext: TMarketContextResult);
+var
+  A: TMarketAssistantResult;
+  S: string;
+begin
+  A := TMarketAssistantEngine.Analyze(AContext);
+
+  lblAssistantSuggestion.Caption := A.SuggestionText;
+  lblAssistantBuy.Caption := Format('BUY  %d / 100', [A.BuyScore]);
+  lblAssistantSell.Caption := Format('SELL %d / 100', [A.SellScore]);
+  lblAssistantBuy.Style.TextColor := clGreen;
+  lblAssistantSell.Style.TextColor := clRed;
+  lblAssistantConfidence.Caption :=
+    Format('Confidence: %d%%', [A.Confidence]);
+  lblAssistantQuality.Caption := 'Data Quality: ' + A.DataQualityText;
+  lblAssistantComponents.Caption :=
+    Format('Trend %d   Alignment %d   Location %d' + sLineBreak +
+           'Volatility %d   Room %d',
+      [A.TrendScore, A.AlignmentScore, A.LocationScore,
+       A.VolatilityScore, A.RoomScore]);
+
+  case A.Direction of
+    adBuy:  lblAssistantSuggestion.Style.TextColor := clGreen;
+    adSell: lblAssistantSuggestion.Style.TextColor := clRed;
+  else
+    lblAssistantSuggestion.Style.TextColor := clOlive;
+  end;
+
+  memAssistantFor.Lines.BeginUpdate;
+  try
+    memAssistantFor.Clear;
+    for S in A.ArgumentsFor do
+      memAssistantFor.Lines.Add('+ ' + S);
+    if memAssistantFor.Lines.Count = 0 then
+      memAssistantFor.Lines.Add('Brak mocnych argumentów.');
+  finally
+    memAssistantFor.Lines.EndUpdate;
+  end;
+
+  memAssistantAgainst.Lines.BeginUpdate;
+  try
+    memAssistantAgainst.Clear;
+    for S in A.ArgumentsAgainst do
+      memAssistantAgainst.Lines.Add('- ' + S);
+    if memAssistantAgainst.Lines.Count = 0 then
+      memAssistantAgainst.Lines.Add('Brak istotnych zastrzeżeń.');
+  finally
+    memAssistantAgainst.Lines.EndUpdate;
+  end;
+
+  if Assigned(FDatabase) and FDatabase.Connection.Connected then
+  begin
+    FDatabase.SaveAssistantSnapshot(
+      Trim(cbSymbol.Text),
+      A.SuggestionText,
+      A.BuyScore,
+      A.SellScore,
+      A.Confidence,
+      A.DataQualityText);
+
+    FDatabase.LoadAssistantHistory(
+      Trim(cbSymbol.Text),
+      memAssistantHistory.Lines,
+      12);
+  end;
+end;
+
+function TfrmMain.FilterEntriesBySymbol(
+  const AEntries: TTradeEntryList;
+  const ASymbol: string): TTradeEntryList;
+var
+  E: TTradeEntry;
+begin
+  Result := TTradeEntryList.Create;
+  if not Assigned(AEntries) then
+    Exit;
+
+  for E in AEntries do
+    if SameText(E.Symbol, ASymbol) then
+      Result.Add(E);
+end;
+
+procedure TfrmMain.UpdateTradingBehaviour;
+var
+  Entries: TTradeEntryList;
+  SymbolEntries: TTradeEntryList;
+  ResultInfo: TTradingBehaviourResult;
+begin
+  if FBehaviourUpdating or FLoading or not Assigned(FProvider) or
+     not FProvider.IsDataAvailable then
+    Exit;
+
+  FBehaviourUpdating := True;
+  Entries := nil;
+  SymbolEntries := nil;
+  try
+    Entries := FProvider.LoadRecentEntries(60);
+    SymbolEntries := FilterEntriesBySymbol(
+      Entries, Trim(cbSymbol.Text));
+    ResultInfo := TTradingBehaviourAnalyzer.Analyze(
+      SymbolEntries, Now);
+    FLastBehaviour := ResultInfo;
+
+    if Assigned(FDatabase) and FDatabase.Connection.Connected then
+      FDatabase.SaveTradeEntries(SymbolEntries);
+
+    TTradingTimelineBuilder.Build(
+      SymbolEntries, ResultInfo, memTimeline.Lines);
+
+    memBehaviour.Lines.BeginUpdate;
+    try
+      memBehaviour.Clear;
+      memBehaviour.Lines.Add('Stan: ' + ResultInfo.StateText);
+      memBehaviour.Lines.Add(
+        Format('Wejścia: 10 min = %d   30 min = %d',
+          [ResultInfo.Entries10Min, ResultInfo.Entries30Min]));
+      memBehaviour.Lines.Add(
+        Format('Wolumen: 10 min = %.2f   30 min = %.2f',
+          [ResultInfo.Volume10Min, ResultInfo.Volume30Min]));
+
+      if ResultInfo.AverageIntervalSeconds > 0 then
+        memBehaviour.Lines.Add(
+          Format('Średni odstęp: %d s',
+            [ResultInfo.AverageIntervalSeconds]))
+      else
+        memBehaviour.Lines.Add('Średni odstęp: -');
+
+      memBehaviour.Lines.Add(
+        Format('Zmiana tempa: %.1fx',
+          [ResultInfo.RateRatio]));
+      memBehaviour.Lines.Add(ResultInfo.Description);
+    finally
+      memBehaviour.Lines.EndUpdate;
+    end;
+
+    case ResultInfo.State of
+      tbsStable:
+        memBehaviour.Style.TextColor := clWindowText;
+      tbsChanged:
+        memBehaviour.Style.TextColor := clOlive;
+      tbsFastDecisions:
+        memBehaviour.Style.TextColor := clMaroon;
+    else
+      memBehaviour.Style.TextColor := clGrayText;
+    end;
+
+    FBehaviourLastUpdate := Now;
+  except
+    on E: Exception do
+    begin
+      memBehaviour.Lines.Text :=
+        'Nie udało się pobrać rytmu sesji:' + sLineBreak + E.Message;
+      TAppLogger.WriteFmt('Behaviour monitor error: %s', [E.Message]);
+    end;
+  end;
+  SymbolEntries.Free;
+  Entries.Free;
+  FBehaviourUpdating := False;
+end;
+
+procedure TfrmMain.tmSessionsTimer(Sender: TObject);
+begin
+  UpdateMarketSessions;
+end;
+procedure TfrmMain.tmLiveTimer(Sender: TObject);
+var
+  Ready: Boolean;
+begin
+  if not Assigned(FProvider) then Exit;
+  FlushDiagnostics;
+  Ready := FProvider.IsDataAvailable;
+  UpdateConnectionState;
+  if Ready and not FSymbolsLoaded then
+  begin
+    try
+      RefreshSymbolsFromMT5;
+    except
+      on E: Exception do
+      begin
+        StatusBar.SimpleText := 'Błąd pobierania symboli: ' + E.Message;
+        TAppLogger.WriteFmt('LoadSymbols error: %s', [E.Message]);
+        if Assigned(memMonitor) then
+          memMonitor.Lines.Add(FormatDateTime('hh:nn:ss.zzz', Now) +
+            '  ERROR GET_SYMBOLS ' + E.Message);
+      end;
+    end;
+  end;
+  if Ready then
+  begin
+    LoadCurrentData;
+    if (FBehaviourLastUpdate = 0) or
+       (SecondsBetween(Now, FBehaviourLastUpdate) >= 15) then
+      UpdateTradingBehaviour;
+  end;
+  FLastReadyState := Ready;
+  FlushDiagnostics;
+end;
+end.
